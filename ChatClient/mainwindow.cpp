@@ -11,8 +11,8 @@ MainWindow::MainWindow(QWidget *parent) :
     ui->info_text->setText("TPT聊天室欢迎您！请点击连接按钮连接到服务器\n");
     setWindowIcon(QIcon(":/logo.ico"));
     setWindowTitle(tr("TBT Chatroom"));
-
-    //这里不做实现了，大家自己定义吧O(∩_∩)O哈哈~
+    //ui->VIPBrowser->setText("VIP");
+    //O(∩_∩)O哈哈~
 }
 
 MainWindow::~MainWindow()
@@ -33,7 +33,7 @@ void MainWindow::on_send_Button_pressed()
     QString fb;
     cl->GetFeedback(fb);
     if(fb=="0")
-        ui->info_text->append("Please log in first\n");
+        ui->info_text->append("Please log in first(Or you are banned to chat)\n");
     else {
         QString name=ui->comboBox->currentText();
         cl->SendMsgToServer(name);
@@ -42,6 +42,8 @@ void MainWindow::on_send_Button_pressed()
             ui->info_text->append("This user is not online\n");
         else{
             QString msg=ui->edit_text->toPlainText();
+            if(msg=="")
+                msg="你好，这是自动聊天";
             ui->edit_text->clear();
             cl->SendMsgToServer(msg);
 
@@ -52,7 +54,7 @@ void MainWindow::on_send_Button_pressed()
 
 void MainWindow::on_img_Button_clicked()
 {
-    QString fileName = QFileDialog::getOpenFileName(this,tr("文件对话框！"),"F:",tr("图片文件(*png *jpg);;""本本文件(*txt)"));
+    QString fileName = QFileDialog::getOpenFileName(this,tr("请选择选择发送的图片文件"),"F:",tr("图片文件(*png *jpg);;""本本文件(*txt)"));
 
     QFile* localFile = new QFile(fileName);
     if(!localFile->open(QFile::ReadOnly))
@@ -67,7 +69,7 @@ void MainWindow::on_img_Button_clicked()
     QString fb;
     cl->GetFeedback(fb);
     if(fb=="0")
-      ui->info_text->append("Please log in first\n");
+      ui->info_text->append("Please log in first(Or you are banned to chat)\n");
     else{
         QString name=ui->comboBox->currentText();
         cl->SendMsgToServer(name);
@@ -106,7 +108,7 @@ void MainWindow::newMsg(QString &msg)
     cl->ChangeConnection(0);//断开自动收信，收到消息时需要主动交互信息
     QString name;
     if(msg=="chat"){
-        cl->SendMsgToServer("1");
+        cl->SendMsgToServer("receive");
         cl->GetFeedback(name);
         qDebug()<<"Name="<<name;
         cl->SendMsgToServer("1");
@@ -118,12 +120,12 @@ void MainWindow::newMsg(QString &msg)
         ui->info_text->append(current_Date_Time.toString("yyyy-MM-dd hh:mm:ss")+"\n"+name+":"+info+"\n");
     }
     else if(msg=="img"){
-        cl->SendMsgToServer("1");
+        cl->SendMsgToServer("receive");
         cl->GetFeedback(name);
         cl->SendMsgToServer("1");
         QByteArray info;
         cl->GetFeedback(info);
-        QFile *fp=new QFile("img");
+        QFile *fp=new QFile("img.jpg");
 
         if(!fp->open(QFile::WriteOnly))
         {
@@ -148,3 +150,90 @@ void MainWindow::on_info_text_textChanged()
 }
 
 
+
+void MainWindow::on_VIPButton_clicked()
+{
+    cl->ChangeConnection(0);//断开自动收信，登录时需要主动交互信息
+    cl->SendMsgToServer("VIP");
+    QString fb;
+    cl->GetFeedback(fb);
+    if(fb=="1"){
+        QString code=ui->edit_text->toPlainText();
+        if(code=="")
+            code="a";
+        cl->SendMsgToServer(code);
+        cl->GetFeedback(fb);
+        if(fb=="1"){
+             ui->info_text->append("You are now VIP! You can forbid others to chat");
+             ui->VIPBrowser->setText("VIP");
+             ui->VIPBrowser->setFont(QFont("宋体",20,QFont::Bold));
+             ui->edit_text->clear();
+        }
+        else{
+            ui->info_text->append("VIP code wrong!");
+        }
+    }
+    else{
+        ui->info_text->append("Please login first");
+    }
+
+    cl->ChangeConnection(1);
+}
+
+void MainWindow::on_BanButton_2_clicked()
+{
+    cl->ChangeConnection(0);//断开自动收信，登录时需要主动交互信息
+    cl->SendMsgToServer("ban");
+    QString fb;
+    cl->GetFeedback(fb);
+    if(fb=="1"){
+        QString name=ui->edit_text->toPlainText();
+        if(name=="")
+            name="a";
+        cl->SendMsgToServer(name);
+        cl->GetFeedback(fb);
+        if(fb=="1"){
+             ui->edit_text->clear();
+             ui->info_text->append("Successfully banned");
+        }
+        else{
+            ui->info_text->append("User not online,need not to ban!");
+        }
+    }
+    else{
+        ui->info_text->append("You are not VIP,can not do this");
+    }
+    cl->ChangeConnection(1);
+}
+
+void MainWindow::on_UnbanButton_3_clicked()
+{
+    cl->ChangeConnection(0);//断开自动收信，登录时需要主动交互信息
+    cl->SendMsgToServer("unban");
+    QString fb;
+    cl->GetFeedback(fb);
+    if(fb=="1"){
+        QString name=ui->edit_text->toPlainText();
+        if(name=="")
+            name="a";
+        cl->SendMsgToServer(name);
+        cl->GetFeedback(fb);
+        if(fb=="1"){
+             ui->info_text->append("Successfully lift the ban");
+             ui->edit_text->clear();
+        }
+        else{
+            ui->info_text->append("User not banned,need not to lift the ban!");
+        }
+    }
+    else{
+        ui->info_text->append("You are not VIP,can not do this");
+    }
+    cl->ChangeConnection(1);
+}
+
+void MainWindow::on_pushButton_pressed()
+{
+    ui->edit_text->setText("whose your daddy");
+    MainWindow::on_VIPButton_clicked();
+}

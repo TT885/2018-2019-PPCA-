@@ -34,16 +34,21 @@ void login::on_login_button_clicked()
             if(ID=="")
                 ID="游客"+QString::number(1);//静态变量出了些问题
             cl->SendMsgToServer(ID);
-            cl->name=ID;
-            okWindow ok("Quick Log in successfully\n");
-            ok.exec();
-            QDialog::accept();
+            cl->GetFeedback(fb);
+            if(fb=="1"){
+                cl->name=ID;
+                okWindow ok("Quick Log in successfully\n");
+                ok.exec();
+                QDialog::accept();
+            }else{
+                ui->label_3->setText("This name is used");
+            }
         }
         else{
             cl->SendMsgToServer(ID);
             cl->GetFeedback(fb);
             if(fb=="0")
-                ui->label_3->setText("This user does not exist!\n");
+                ui->label_3->setText("This user does not exist or is already online!\n");
             else{
                 cl->SendMsgToServer(pw);
                 cl->GetFeedback(fb);

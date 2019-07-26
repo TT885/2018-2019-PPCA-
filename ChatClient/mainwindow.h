@@ -30,6 +30,14 @@ private slots:
 
     void on_img_Button_clicked();
 
+    void on_VIPButton_clicked();
+
+    void on_BanButton_2_clicked();
+
+    void on_UnbanButton_3_clicked();
+
+    void on_pushButton_pressed();
+
 private:
     Ui::MainWindow *ui;
     Client *cl;

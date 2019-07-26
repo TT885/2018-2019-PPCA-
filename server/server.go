@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"time"
 )
 //1.建立监听
 //2.接入所有用户，保存昵称
@@ -15,8 +16,10 @@ type Client1 struct {
 type Client2 struct{
 	conn net.Conn;
 	name string;
-	lock bool;
 }
+var clientBan =make(map[net.Conn]int)
+var clientVIP =make(map[net.Conn]int);
+var clientlock =make(map[net.Conn]int);
 var clientsMap =make(map[string]Client1);   //登录时使用
 var onlineclients=make(map[string]Client2); //聊天时使用
 
@@ -42,20 +45,67 @@ func serveIt(conn net.Conn){
 	var logged bool =false;
 	var client Client2;
 	client.conn=conn;
-	client.lock=false;
 	for {      //循环等待客户端请求
 
 		fmt.Println("Waiting for request");
-		for client.lock{
-			;
-		}
 		n, _ := conn.Read(buffer);
-		if logged {
-			client.lock=true;
-			onlineclients[client.name] = client;
-		}
+
 		choice:=string(buffer[:n]);
-		if choice=="login" {
+		if choice=="VIP"{
+			if(logged){
+				conn.Write([]byte("1"))
+				n,_=conn.Read(buffer);
+				key:=string(buffer[:n]);
+				if key=="whose your daddy"{
+					clientVIP[conn]=1;
+					conn.Write([]byte("1"));
+				}else{
+					conn.Write([]byte("0"));  //"1"表示合法命令，"0"表示非法命令或者需要登录后使用
+				}
+			}else{
+				conn.Write([]byte("0"));  //"1"表示合法命令，"0"表示非法命令或者需要登录后使用
+			}
+		} else if choice=="ban"{
+			_,ok:=clientVIP[conn]
+			if(ok){
+				conn.Write([]byte("1"));
+				n,_:=conn.Read(buffer);
+				name:=string(buffer[:n]);
+				goalClient,exi:=onlineclients[name];
+				if exi{
+					conn.Write([]byte("1"));
+					clientBan[goalClient.conn]=1;
+				}else{
+					conn.Write([]byte("0"));
+					fmt.Println("Ban:Not online")
+				}
+			}else{
+				conn.Write([]byte("0"));
+			}
+		}else if choice=="unban"{
+			_,ok:=clientVIP[conn]
+			if(ok){
+				conn.Write([]byte("1"));
+				n,_:=conn.Read(buffer);
+				name:=string(buffer[:n]);
+				_,exi:=clientBan[onlineclients[name].conn];
+				if exi{
+					conn.Write([]byte("1"));
+					delete (clientBan,onlineclients[name].conn);
+				}else{
+					conn.Write([]byte("0"));
+					fmt.Println("Ban:Not banned")
+				}
+			}else{
+				conn.Write([]byte("0"));
+			}
+		} else if choice=="receive"{
+			clientlock[conn]=1;
+			for clientlock[conn]>0{
+				time.Sleep(10);
+			}
+
+		}else if choice=="login" {
 			if(logged){
 				conn.Write([]byte("0"));
 				fmt.Println("Already logged in");
@@ -74,7 +124,8 @@ func serveIt(conn net.Conn){
 				handleRegister(conn);
 			}
 		}else if  choice=="chat" || choice=="img"{
-			if(logged){
+			_,ok:=clientBan[conn];
+			if(logged&&!ok){
 				fmt.Println("聊天/传文件服务");
 				conn.Write([]byte("1"));
 				ioWithIt(client,choice);
@@ -97,10 +148,6 @@ func serveIt(conn net.Conn){
 		}else{
 			fmt.Println("非法请求，暂不能服务:",choice);;
 			conn.Write([]byte("0"));
-		}
-		if logged {
-			client.lock=true;
-			onlineclients[client.name] = client;
 		}
 	}
 }
@@ -134,19 +181,26 @@ func handleLogin(client *Client2) bool{
 		(*client).conn.Write([]byte("1"));
 		n,_=(*client).conn.Read(buffer);
 		ID=string(buffer[:n]);
-		(*client).name=ID;
-		onlineclients[ID] = *client;
-		var msg string=ID+" log in";
-		fmt.Println(msg);     //服务器端显示，加入map,并向用户广播
-		/*for _,client :=range onlineclients{
-			if client.name!=ID {  //对刚上线的本人不发消息
-				client.conn.Write([]byte(msg));
-			}
-		}  //上线提示要修改*/
-		return true;
+		_, online := onlineclients[ID];
+		if !online {
+			(*client).conn.Write([]byte("1"));
+			(*client).name = ID;
+			onlineclients[ID] = *client;
+			var msg string = ID + " log in";
+			fmt.Println(msg); //服务器端显示，加入map,并向用户广播
+			/*for _,client :=range onlineclients{
+				if client.name!=ID {  //对刚上线的本人不发消息
+					client.conn.Write([]byte(msg));
+				}
+			}  //上线提示要修改*/
+			return true;
+		}else{
+			(*client).conn.Write([]byte("0"));
+		}
 	}else {
 		client1, exi := clientsMap[ID];
-		if (exi) {
+		_,online:=onlineclients[ID];
+		if (exi &&!online) {
 			(*client).conn.Write([]byte("1"));
 			fmt.Println("User exist");
 			n, _ = (*client).conn.Read(buffer);
@@ -169,15 +223,16 @@ func handleLogin(client *Client2) bool{
 				return false;
 			}
 		} else {
-			fmt.Println("User not exits");
+			fmt.Println("User not exits or is online");
 			(*client).conn.Write([]byte("0"));
 			return false;
 		}
 	}
+	return false;
 }
 
 func ioWithIt(client Client2,choice string){
-	buffer:=make([]byte,60000);
+	buffer:=make([]byte,2000000);
 	n,_:= client.conn.Read(buffer);
 	targetName :=string(buffer[:n]);
 	fmt.Println("targetName=",targetName);
@@ -188,44 +243,31 @@ func ioWithIt(client Client2,choice string){
 
 		client.conn.Write([]byte("1"));
 		n, _ = client.conn.Read(buffer);
-		fmt.Println("buffer=",string(buffer[:n]));
-		fmt.Println("发送的信息格式：",client.name,"  ",choice,"  ",buffer);
+		//fmt.Println("buffer=",string(buffer[:n]));
+		//fmt.Println("发送的信息格式：",client.name,"  ",choice,"  ",buffer);
 		if targetName == "All" {
 			fmt.Println("Send to all");
 			for _, cli := range onlineclients {
 				if cli.name!=client.name {
-					fmt.Println("begin to send 1 user,name=", cli.name)
-					for cli.lock{
-						;
-					}
-					cli.lock=true;
-					//onlineclients[cli.name]=cli;
+					//fmt.Println("begin to send 1 user,name=", cli.name)
 					sendMsg(client.name, choice, buffer, cli.conn);
-					cli.lock=false;
-					//onlineclients[cli.name]=cli;
-					fmt.Println("finish send 1 user:", client.name, " ", choice, " ", buffer);
-					fmt.Println(cli.name);
+					//fmt.Println("finish send 1 user:", client.name, " ", choice, " ", buffer);
+					//fmt.Println(cli.name);
 				}
 			}
 		}else if clien.name!=client.name{
 			fmt.Println("Send to one","   to:",clien.name);
-			for clien.lock{
-				;
-			}
-			clien.lock=true;
-			//onlineclients[clien.name]=clien;
 			sendMsg(client.name,choice,buffer,clien.conn);
-			clien.lock=false;             //自己的消息不发给自己
-			//onlineclients[clien.name]=clien;
+			onlineclients[clien.name]=clien;
 		}
 		fmt.Println("Send to self","   to:",client.name);
-		sendMsg(client.name,choice,buffer,client.conn);
+		sendMsgToSelf(client.name,choice,buffer,client.conn);
 	}else {
 		client.conn.Write([]byte("0"));
 		fmt.Println("Not online");
 	}
 }
-func sendMsg(name ,choice string,msg []byte,conn net.Conn){
+func sendMsgToSelf(name ,choice string,msg []byte,conn net.Conn){
 	buff:=make([]byte,500);
 	conn.Write([]byte(choice));
 	conn.Read(buff);
@@ -235,4 +277,21 @@ func sendMsg(name ,choice string,msg []byte,conn net.Conn){
 	fmt.Println("sendMsg:name:",name);
 	conn.Write(msg);
 	fmt.Println("sendMsg:send finished");
+}
+
+
+func sendMsg(name ,choice string,msg []byte,conn net.Conn){
+	buff:=make([]byte,500);
+	conn.Write([]byte(choice));
+	for clientlock[conn]==0{
+		fmt.Println("Wait for feedback");
+		time.Sleep(10);
+	}
+	fmt.Println("sendMsg: choice=",choice);
+	conn.Write([]byte(name));
+	conn.Read(buff);
+	fmt.Println("sendMsg:name:",name);
+	conn.Write(msg);
+	fmt.Println("sendMsg:send finished");
+	clientlock[conn]=0;
 }
